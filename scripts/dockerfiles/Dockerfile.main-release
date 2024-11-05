@@ -18,14 +18,53 @@ RUN install bin/fluent-bit /fluent-bit/bin/
 
 # Build lightweight release image
 FROM public.ecr.aws/amazonlinux/amazonlinux:2
-RUN yum upgrade -y \
-    && yum install -y openssl11-devel \
+
+# Ensure default user shell timeout is configured (CIS_AMAZON2_4.5.3.2)
+ENV TMOUT=600
+RUN echo "TMOUT=${TMOUT}" >> /etc/profile && \
+    echo "readonly TMOUT" >> /etc/profile && \
+    echo "export TMOUT" >> /etc/profile
+
+# Ensure default user umask is configured (CIS_AMAZON2_4.5.3.3)
+RUN echo "umask 027" >> /etc/profile && \
+    echo "umask 027" >> /etc/bashrc
+
+RUN yum upgrade -y && yum install -y \
+          # This package is needed to verify if this OpenSSL version is FIPS compliant
+          # openssl11 \
+          openssl11-devel \
           cyrus-sasl-devel \
           pkgconfig \
           systemd-devel \
           zlib-devel \
           libyaml \
+          tar \
           nc && rm -fr /var/cache/yum
+
+# When enabling home audit fails on "Ensure Root Path Integrity (CIS_AMAZON2_6.2.8)"
+# It's needed to install GO in the final image if necessary to veryify the build binaries are fips complaint
+# Command to test: 
+# - go tool nm /fluent-bit/bin/fluent-bit | grep FIPS
+# - go tool nm /fluent-bit/kinesis.so | grep FIPS
+# - go tool nm /fluent-bit/firehose.so | grep FIPS
+# - go tool nm /fluent-bit/cloudwatch.so | grep FIPS
+
+# ENV HOME /home
+# ENV GOEXPERIMENT=boringcrypto
+# ENV CGO_ENABLED=1
+# RUN curl -sL -o /bin/gimme https://raw.githubusercontent.com/travis-ci/gimme/master/gimme
+# RUN chmod +x /bin/gimme
+
+# # Lock Go Lang version to stable
+# RUN export GO_STABLE_OUTPUT=`curl --silent https://go.dev/VERSION?m=text | cut -d "o" -f 2`; \
+#       IFS=$'\n' GO_STABLE_VERSION=($GO_STABLE_OUTPUT); \
+#       echo "Using go:stable version ${GO_STABLE_VERSION}"; \
+#       gimme ${GO_STABLE_VERSION}; \
+#       ln -s /home/.gimme/versions/go${GO_STABLE_VERSION}.linux.arm64 /home/.gimme/versions/gostable.linux.arm64; \
+#       ln -s /home/.gimme/versions/go${GO_STABLE_VERSION}.linux.amd64 /home/.gimme/versions/gostable.linux.amd64
+# ENV PATH ${PATH}:/home/.gimme/versions/gostable.linux.arm64/bin:/home/.gimme/versions/gostable.linux.amd64/bin
+# RUN go version
+
 
 COPY --from=builder /fluent-bit /fluent-bit
 COPY --from=aws-fluent-bit-plugins:latest /kinesis-streams/bin/kinesis.so /fluent-bit/kinesis.so
