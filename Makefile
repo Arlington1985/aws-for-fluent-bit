@@ -21,10 +21,12 @@ dev: DOCKER_BUILD_FLAGS =
 dev: release
 
 .PHONY: release
-release: build linux-plugins
+release: build build-init linux-plugins
 	docker system prune -f
 	docker build $(DOCKER_BUILD_FLAGS) -t amazon/aws-for-fluent-bit:main-release -f ./scripts/dockerfiles/Dockerfile.main-release .
 	docker tag amazon/aws-for-fluent-bit:main-release amazon/aws-for-fluent-bit:latest
+	docker system prune -f
+	docker build $(DOCKER_BUILD_FLAGS) -t amazon/aws-for-fluent-bit:init-latest -f ./scripts/dockerfiles/Dockerfile.init-release .
 
 .PHONY: debug
 debug: main-debug init-debug
